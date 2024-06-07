@@ -31,6 +31,7 @@ class WandbSummaryWriter(SummaryWriter):
                 "Wandb username not found. Please run or add to ~/.bashrc: export WANDB_USERNAME=YOUR_USERNAME"
             )
 
+        print(f"Logging to Weights and Biases project: {project} with entity: {entity}")
         wandb.init(project=project, entity=entity)
 
         # Change generated name to project-number format

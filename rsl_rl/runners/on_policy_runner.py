@@ -3,19 +3,31 @@
 
 from __future__ import annotations
 
+# profiling
+import cProfile
+import io
 import os
+import pstats
 import statistics
 import time
 import torch
+import math
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter as TensorboardSummaryWriter
 
 import rsl_rl
 from rsl_rl.algorithms import PPO
-from rsl_rl.env import VecEnv
-from rsl_rl.modules import ActorCritic, ActorCriticRecurrent, ActorCriticBeta, EmpiricalNormalization, ActorCriticSeparate, SimpleNavPolicy
-from rsl_rl.utils import store_code_state
 from rsl_rl.distribution.beta_distribution import BetaDistribution
+from rsl_rl.env import VecEnv
+from rsl_rl.modules import (
+    ActorCritic,
+    ActorCriticBeta,
+    ActorCriticRecurrent,
+    ActorCriticSeparate,
+    EmpiricalNormalization,
+    SimpleNavPolicy,
+)
+from rsl_rl.utils import store_code_state
 
 
 class OnPolicyRunner:
@@ -28,12 +40,20 @@ class OnPolicyRunner:
         self.device = device
         self.env = env
         obs, extras = self.env.get_observations()
+        # TODO @tasdep: do some preprocessing here to get the splits based on specific terms
         num_obs = obs.shape[1]
         if "critic" in extras["observations"]:
             num_critic_obs = extras["observations"]["critic"].shape[1]
         else:
             num_critic_obs = num_obs
-        actor_critic_class = eval(self.policy_cfg.pop("class_name"))  # ActorCritic | ActorCriticRecurrent | ActorCriticBeta | ActorCriticSeparate
+        
+        self.policy_cfg["split_obs"] = [
+            ("risk_image", 0, math.prod(self.env.unwrapped.cfg.risk_image_size), self.env.unwrapped.cfg.risk_image_size),
+            ("depth_image", 0, math.prod(self.env.unwrapped.cfg.depth_image_size), self.env.unwrapped.cfg.depth_image_size),
+        ]  # format: [("name", start, length, shape), ...] shape is a tensor.shape return value to allow easy reshaping eg. for CNN input
+        actor_critic_class = eval(
+            self.policy_cfg.pop("class_name")
+        )  # ActorCritic | ActorCriticRecurrent | ActorCriticBeta | ActorCriticSeparate
         actor_critic: ActorCritic | ActorCriticRecurrent | ActorCriticBeta | ActorCriticSeparate = actor_critic_class(
             num_obs, num_critic_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)
@@ -110,7 +130,19 @@ class OnPolicyRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(obs, critic_obs)
+
+                    # pr = cProfile.Profile()
+                    # pr.enable()
                     obs, rewards, dones, infos = self.env.step(actions)
+                    # pr.disable()
+                    # s = io.StringIO()
+                    # sortby = 'cumulative'
+                    # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+                    # if not os.path.exists("output/profiling"):
+                    #     os.makedirs("output/profiling")
+                    # ps.dump_stats(f"output/profiling/profile_output_{it}_{i}.prof")
+                    # print(s.getvalue())
+
                     obs = self.obs_normalizer(obs)
                     if "critic" in infos["observations"]:
                         critic_obs = self.critic_obs_normalizer(infos["observations"]["critic"])
