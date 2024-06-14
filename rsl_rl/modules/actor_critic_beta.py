@@ -61,7 +61,8 @@ class PolicyNetwork(nn.Module):
             # [("name", start, length, shape), ...] 
             input_dim -= sum([length for _, _, length, _ in split_obs])
             input_dim += sum([CNN_output_dim for _ in split_obs])
-
+        else:
+            self.split_obs = None
         # create the MLP part
         MLP_layers = []
         MLP_layers.append(nn.Linear(input_dim, hidden_dims[0]))
