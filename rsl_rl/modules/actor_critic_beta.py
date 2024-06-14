@@ -50,6 +50,7 @@ class SimpleCNN(nn.Module):
 class PolicyNetwork(nn.Module):
     def __init__(self, input_dim: int, hidden_dims: list[int], activation, output_dim: int, split_obs: list[tuple] | None = None):
         super().__init__()
+        self.input_dim = input_dim
         CNN_output_dim = 128
         # TODO work out how to pass image sizes from the env
         if split_obs is not None:
