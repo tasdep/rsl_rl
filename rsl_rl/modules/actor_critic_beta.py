@@ -52,7 +52,7 @@ class PolicyNetwork(nn.Module):
         super().__init__()
         self.input_dim = input_dim
         CNN_output_dim = 128
-        # TODO work out how to pass image sizes from the env
+
         if split_obs is not None:
             self.split_obs = split_obs
             # create CNNs for each split observation

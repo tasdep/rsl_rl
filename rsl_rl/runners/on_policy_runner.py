@@ -14,6 +14,8 @@ import torch
 import math
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter as TensorboardSummaryWriter
+from omni.isaac.orbit.envs import RLTaskEnv
+from omni.isaac.orbit.managers import ActionManager, EventManager, ObservationManager
 
 import rsl_rl
 from rsl_rl.algorithms import PPO
@@ -47,10 +49,30 @@ class OnPolicyRunner:
         else:
             num_critic_obs = num_obs
         
-        self.policy_cfg["split_obs"] = [
-            ("risk_image", 0, math.prod(self.env.unwrapped.cfg.risk_image_size), self.env.unwrapped.cfg.risk_image_size),
-            ("depth_image", 0, math.prod(self.env.unwrapped.cfg.depth_image_size), self.env.unwrapped.cfg.depth_image_size),
-        ]  # format: [("name", start, length, shape), ...] shape is a tensor.shape return value to allow easy reshaping eg. for CNN input
+        if "split_obs" in self.policy_cfg:
+            split_info = [] # format: [("name", start, length, shape), ...] shape is a tensor.shape return value to allow easy reshaping eg. for CNN input
+            # search the split terms that are passed
+            env = self.env.unwrapped
+            obs_manager = env.observation_manager
+            term_dims = obs_manager.group_obs_term_dim["policy"]
+            term_names = obs_manager.active_terms["policy"]
+            for obs_term_name in self.policy_cfg["split_obs"]:
+                if obs_term_name in term_names:
+                    index = term_names.index(obs_term_name)
+                    start = sum([d[0] for d in term_dims[:index]])
+                    length = term_dims[index][0]
+                    shape = env.cfg.depth_image_size # TODO this is just fixed for now
+                    split_info.append((obs_term_name, start, length, shape))
+            if len(split_info) > 0:
+                # sort by start index
+                split_info = sorted(split_info, key = lambda x: x[1])
+                # validate that the split terms are all at the end, not critical but simple for now
+                for i in range(len(split_info)-1):
+                    if split_info[i][1] + split_info[i][2] != split_info[i+1][1]:
+                        raise ValueError("Split terms must be contiguous")
+                assert split_info[-1][1] + split_info[-1][2] == num_obs, "Split terms must come after all other terms"
+                self.policy_cfg["split_obs"] = split_info
+
         actor_critic_class = eval(
             self.policy_cfg.pop("class_name")
         )  # ActorCritic | ActorCriticRecurrent | ActorCriticBeta | ActorCriticSeparate
@@ -63,7 +85,7 @@ class OnPolicyRunner:
         self.save_interval = self.cfg["save_interval"]
         self.empirical_normalization = self.cfg["empirical_normalization"]
         if self.empirical_normalization:
-            if train_cfg["resume"] == True:
+            if train_cfg.get("resume") == True:
                 until = 0
             else:
                 until=1.0e8
